@@ -1,0 +1,217 @@
+-- SERVICES
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+local Camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+-- WAIT FOR GUI
+repeat wait() until Player:FindFirstChild("PlayerGui")
+
+-- GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "StupidMenu"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = Player:WaitForChild("PlayerGui")
+
+local function createButton(name, text, yPos, color)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.new(0, 300, 0, 80)
+    button.Position = UDim2.new(0.5, -150, 0, yPos)
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 36
+    button.Font = Enum.Font.SourceSans
+    button.BackgroundColor3 = color
+    button.BorderSizePixel = 5
+    button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    button.Parent = screenGui
+    return button
+end
+
+-- TITLE
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(0, 500, 0, 100)
+titleLabel.Position = UDim2.new(0.5, -250, 0, 10)
+titleLabel.Text = "STUPID MENU"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 48
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextStrokeTransparency = 0.8
+titleLabel.Parent = screenGui
+
+-- BUTTONS
+local aimbotButton = createButton("AimbotButton", "Aimbot: OFF", 150, Color3.fromRGB(255, 0, 0))
+local espButton = createButton("ESPButton", "ESP: ON", 250, Color3.fromRGB(0, 255, 0))
+local jumpButton = createButton("JumpButton", "Infinite Jump", 350, Color3.fromRGB(0, 0, 255))
+local shootThroughWallsButton = createButton("WallButton", "Shoot Through Walls: OFF", 450, Color3.fromRGB(255, 255, 0))
+
+-- STATES
+local aimbotEnabled = false
+local shootThroughWalls = false
+local walkspeed = 16
+local maxSpeed = 500
+
+-- UPDATE GUI TEXT
+local function updateAimbotStatus()
+    aimbotButton.Text = aimbotEnabled and "Aimbot: ON" or "Aimbot: OFF"
+    aimbotButton.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end
+
+local function updateWallStatus()
+    shootThroughWallsButton.Text = shootThroughWalls and "Shoot Through Walls: ON" or "Shoot Through Walls: OFF"
+end
+
+-- TOGGLES
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+
+    if input.KeyCode == Enum.KeyCode.E then
+        aimbotEnabled = not aimbotEnabled
+        updateAimbotStatus()
+    elseif input.KeyCode == Enum.KeyCode.J then
+        shootThroughWalls = not shootThroughWalls
+        updateWallStatus()
+    elseif input.KeyCode == Enum.KeyCode.Right then
+        walkspeed = math.clamp(walkspeed + 10, 16, maxSpeed)
+        if Humanoid then Humanoid.WalkSpeed = walkspeed end
+        print("Walkspeed:", walkspeed)
+    elseif input.KeyCode == Enum.KeyCode.Left then
+        walkspeed = math.clamp(walkspeed - 10, 16, maxSpeed)
+        if Humanoid then Humanoid.WalkSpeed = walkspeed end
+        print("Walkspeed:", walkspeed)
+    end
+end)
+
+-- ENEMY FINDER
+local function isVisible(targetPart)
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin).Unit * 500
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {Player.Character}
+    local result = Workspace:Raycast(origin, direction, raycastParams)
+
+    return result and result.Instance:IsDescendantOf(targetPart.Parent)
+end
+
+local function getClosestEnemy()
+    local closest = nil
+    local shortestDist = math.huge
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Head") then
+            local isEnemy = true
+            if Player.Team ~= nil and plr.Team ~= nil then
+                isEnemy = plr.Team ~= Player.Team
+            end
+            if isEnemy then
+                local head = plr.Character.Head
+                local dist = (Camera.CFrame.Position - head.Position).Magnitude
+                local screenPoint, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen and dist < shortestDist and isVisible(head) then
+                    shortestDist = dist
+                    closest = plr
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+-- AIMBOT LOOP
+RunService.RenderStepped:Connect(function()
+    if aimbotEnabled then
+        local enemy = getClosestEnemy()
+        if enemy and enemy.Character and enemy.Character:FindFirstChild("Head") then
+            local headPos = enemy.Character.Head.Position
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, headPos)
+        end
+    end
+end)
+
+-- SHOOT THROUGH WALLS
+local function shootWeapon()
+    if shootThroughWalls then
+        local fireRemote = nil
+        for _, obj in ipairs(getgc(true)) do
+            if typeof(obj) == "table" and rawget(obj, "Fire") and rawget(obj, "HitPart") then
+                fireRemote = obj
+                break
+            end
+        end
+
+        if fireRemote then
+            local origin = Camera.CFrame.Position
+            local direction = Camera.CFrame.LookVector * 500
+            local hitPosition = origin + direction
+
+            fireRemote.Fire({
+                Hit = nil,
+                RayObject = Ray.new(origin, direction),
+                Distance = 500,
+                CFrame = CFrame.new(hitPosition),
+                MouseHit = CFrame.new(hitPosition),
+                Target = nil
+            })
+
+            print("Shot fired through walls.")
+        else
+            warn("Could not find Arsenal fire remote.")
+        end
+    end
+end
+
+-- SHOOT TRIGGER
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        shootWeapon()
+    end
+end)
+
+-- ESP
+local function createESP(plr)
+    if plr.Character and plr.Character:FindFirstChild("Head") then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "ESP"
+        billboard.Size = UDim2.new(0, 100, 0, 40)
+        billboard.AlwaysOnTop = true
+        billboard.Adornee = plr.Character.Head
+
+        local label = Instance.new("TextLabel", billboard)
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.Text = plr.Name
+        label.TextColor3 = Color3.new(1, 0, 0)
+        label.TextScaled = true
+        label.Font = Enum.Font.SourceSansBold
+
+        billboard.Parent = plr.Character
+    end
+end
+
+-- ENABLE ESP FOR EXISTING + FUTURE PLAYERS
+for _, plr in pairs(Players:GetPlayers()) do
+    if plr ~= Player then
+        plr.CharacterAdded:Connect(function()
+            wait(1)
+            createESP(plr)
+        end)
+        if plr.Character then
+            createESP(plr)
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    plr.CharacterAdded:Connect(function()
+        wait(1)
+        createESP(plr)
+    end)
+end)
